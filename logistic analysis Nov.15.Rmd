@@ -1,0 +1,121 @@
+---
+title: "Logistic analysis"
+author: "Rachel/Steven"
+date: "November 7, 2018"
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r}
+###improt data
+setwd("D:/1WORK/Class/7250/MCMC/jags-exercises-master")
+sam <- read.csv("Environmental Project Compiled Information.csv", stringsAsFactors = T)
+
+```
+
+
+#library
+```{r}
+library(aod)
+library(ggplot2)
+library(Matrix)
+library(lme4)
+library(sjPlot)
+library(car)
+library(multcomp)
+```
+
+
+
+#dummy
+```{r}
+###change salmonella into 0 and 1
+sam$Salmonella_Positive<-ifelse(sam$Salmonella_Positive=='Yes', 1,0)
+sum(sam$Salmonella_Positive)
+```
+
+#reference level and fit the model
+```{r}
+##change ref level
+sam$Sample_Method <- relevel(sam$Sample_Method, ref='Feed/Hay')#Feed/Hay is ref level
+sam$Condition <- relevel(sam$Condition, ref='Dry')# Dry is ref level
+sam$Species <- relevel(sam$Species, ref='Wildlife')#wildlife is the ref level
+```
+
+#create train data
+```{r}
+library(caret)
+set.seed(4650)
+train <- createDataPartition(sam$Salmonella_Positive, 
+                                  p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+dim(train)
+```
+
+```{r}
+###humidity and temparature are insignificant, we can remove from the model
+SamlogitR2 <- glmer(Salmonella_Positive ~  Season + (1|Region) + (1|Year)+
+                      Species + Condition + Sample_Method, data = sam[train,], family = binomial)
+
+summary(SamlogitR2)
+```
+
+#sjplot
+```{r}
+###sjPlot, showing odds ratio compare to reference level
+sjplot <- sjt.glmer(SamlogitR2, group.pred = TRUE, p.numeric = TRUE,show.re.var = TRUE, exp.coef = TRUE)
+
+sjplot
+Anova(SamlogitR2)
+
+```
+
+#predicting test data with default 0.5
+```{r}
+library(caret)
+test <- sam[-train,]
+#confusionMatrix(predict(SamlogitR2, test), test$Salmonella_Positive)
+
+```
+
+
+
+```{r}
+fitted.results <- predict(SamlogitR2,newdata=subset(test,select=c(3,2,5,8,9,13)),type='response')
+fitted.results <- ifelse(fitted.results > 0.39,1, 0)
+table(test$Salmonella_Positive, fitted.results)
+misClasificError <- mean(fitted.results != test$Salmonella_Positive)
+print(paste('Accuracy',1-misClasificError))
+```
+#sensitivity and specitivity
+```{r}
+sensitivity <- 56/(55+28)
+specificity <- 86/(86+7)
+sensitivity
+specificity
+```
+#pairwise comparsion
+```{r}
+##season
+Samghlt.season <- glht(glmer(Salmonella_Positive ~ Season + Species + Condition + Sample_Method + (1|Region),
+                      data = sam, family = binomial, nAGQ = 2) , linfct = mcp(Season = "Tukey"))
+summary(Samghlt.season)
+
+##Species
+Samghlt.Species <- glht(glmer(Salmonella_Positive ~ Season + Species + Condition + Sample_Method + (1|Region),
+                             data = sam, family = binomial, nAGQ = 2) , linfct = mcp(Species = "Tukey"))
+summary(Samghlt.Species)
+
+##Condition
+Samghlt.Condition <- glht(glmer(Salmonella_Positive ~ Season + Species + Condition + Sample_Method + (1|Region),
+                              data = sam, family = binomial, nAGQ = 2) , linfct = mcp(Condition = "Tukey"))
+summary(Samghlt.Condition)
+
+##Sample_Method
+Samghlt.Method <- glht(glmer(Salmonella_Positive ~ Season + Species + Condition + Sample_Method + (1|Region),
+                                data = sam, family = binomial, nAGQ = 2) , linfct = mcp(Sample_Method = "Tukey"))
+summary(Samghlt.Method)
+
+```
